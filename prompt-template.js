@@ -1,14 +1,15 @@
 /**
- * Builds the clinical prompt sent to the LLM.
- * Keeping this server-side means the template is never exposed in the browser bundle.
+ * System prompt for the tool-based flow.
+ * The LLM is told to call tools to gather the data it needs, then produce the summary.
  *
- * @param {string} visitDataJson - JSON.stringify of the serialized visit data object
  * @returns {string}
  */
-function buildVisitSummaryPrompt(visitDataJson) {
+function buildSystemPrompt() {
   return `You are a clinical documentation assistant for a healthcare provider.
-Given the structured visit data below, generate a concise clinical
-visit summary using exactly this format:
+You have access to a set of tools that retrieve specific clinical data for this visit.
+Call the tools you need to gather relevant information, then produce a concise clinical visit summary.
+
+Use exactly this format for the summary:
 
 ## Visit Summary
 **Patient**: ... | **Visit dates**: ... (start to end, may span multiple days) | **Visit Type**: ... | **Provider**: ...
@@ -34,15 +35,12 @@ visit summary using exactly this format:
 ## Plan & Follow-up
 [next steps, referrals, follow-up appointments]
 
----
-VISIT DATA:
-${visitDataJson}
-
 Rules:
+- Call only the tools whose data you actually need for the summary
 - Only include sections where data was actually collected
 - Use plain clinical language
 - If a section has no data, omit it entirely
-- Do not invent or infer data not present in the input`;
+- Do not invent or infer data not present in the tool results`;
 }
 
-module.exports = { buildVisitSummaryPrompt };
+module.exports = { buildSystemPrompt };

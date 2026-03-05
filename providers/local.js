@@ -1,4 +1,5 @@
 const { DEFAULT_TEMPERATURE, throwIfNotOk } = require('./utils');
+const { runOpenAIToolLoop } = require('../tool-loop/openai');
 
 const LOCAL_API_KEY = process.env.LOCAL_MODEL_API_KEY || 'local';
 const LOCAL_BASE_URL = (process.env.LOCAL_MODEL_BASE_URL || 'http://localhost:11434/v1').replace(/\/$/, '');
@@ -29,4 +30,17 @@ async function callLocal(model, prompt) {
   return { content, usage: { input, output, total } };
 }
 
+/**
+ * Tool-based local model call for V2 endpoint.
+ * Reuses the OpenAI tool loop with the local base URL.
+ * @param {string} model
+ * @param {string} systemPrompt
+ * @param {Array} tools  — OpenAI function tool format
+ * @param {import('../clinical-tools/executor').ToolExecutor} executor
+ */
+async function callLocalWithTools(model, systemPrompt, tools, executor) {
+  return runOpenAIToolLoop(LOCAL_API_KEY, LOCAL_BASE_URL, model, systemPrompt, tools, executor);
+}
+
 module.exports = callLocal;
+module.exports.callLocalWithTools = callLocalWithTools;

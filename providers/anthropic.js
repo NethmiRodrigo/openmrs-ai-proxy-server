@@ -1,4 +1,5 @@
 const { throwIfNotOk } = require('./utils');
+const { runAnthropicToolLoop } = require('../tool-loop/anthropic');
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
@@ -29,4 +30,17 @@ async function callAnthropic(model, prompt) {
   return { content, usage: { input, output, total: input + output } };
 }
 
+/**
+ * Tool-based Anthropic call for V2 endpoint.
+ * @param {string} model
+ * @param {string} systemPrompt
+ * @param {Array} tools  — Anthropic canonical tool format
+ * @param {import('../clinical-tools/executor').ToolExecutor} executor
+ */
+async function callAnthropicWithTools(model, systemPrompt, tools, executor) {
+  if (!ANTHROPIC_KEY) throw new Error('ANTHROPIC_API_KEY is not set on the server');
+  return runAnthropicToolLoop(ANTHROPIC_KEY, model || DEFAULT_MODEL, systemPrompt, tools, executor);
+}
+
 module.exports = callAnthropic;
+module.exports.callAnthropicWithTools = callAnthropicWithTools;

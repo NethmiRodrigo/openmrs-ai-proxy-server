@@ -1,4 +1,5 @@
 const { DEFAULT_TEMPERATURE, throwIfNotOk } = require('./utils');
+const { runGeminiToolLoop } = require('../tool-loop/gemini');
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
@@ -23,4 +24,17 @@ async function callGemini(model, prompt) {
   return { content, usage: { input, output, total } };
 }
 
+/**
+ * Tool-based Gemini call for V2 endpoint.
+ * @param {string} model
+ * @param {string} systemPrompt
+ * @param {Array} tools  — Gemini function declarations format
+ * @param {import('../clinical-tools/executor').ToolExecutor} executor
+ */
+async function callGeminiWithTools(model, systemPrompt, tools, executor) {
+  if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY is not set on the server');
+  return runGeminiToolLoop(GEMINI_KEY, model, systemPrompt, tools, executor);
+}
+
 module.exports = callGemini;
+module.exports.callGeminiWithTools = callGeminiWithTools;

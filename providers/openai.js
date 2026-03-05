@@ -1,7 +1,9 @@
 const { DEFAULT_TEMPERATURE, throwIfNotOk } = require('./utils');
+const { runOpenAIToolLoop } = require('../tool-loop/openai');
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const DEFAULT_MODEL = 'gpt-4o-mini';
+const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
 async function callOpenAI(model, prompt) {
   if (!OPENAI_KEY) throw new Error('OPENAI_API_KEY is not set on the server');
@@ -24,4 +26,17 @@ async function callOpenAI(model, prompt) {
   return { content, usage: { input, output, total } };
 }
 
+/**
+ * Tool-based OpenAI call for V2 endpoint.
+ * @param {string} model
+ * @param {string} systemPrompt
+ * @param {Array} tools  — OpenAI function tool format
+ * @param {import('../clinical-tools/executor').ToolExecutor} executor
+ */
+async function callOpenAIWithTools(model, systemPrompt, tools, executor) {
+  if (!OPENAI_KEY) throw new Error('OPENAI_API_KEY is not set on the server');
+  return runOpenAIToolLoop(OPENAI_KEY, OPENAI_BASE_URL, model || DEFAULT_MODEL, systemPrompt, tools, executor);
+}
+
 module.exports = callOpenAI;
+module.exports.callOpenAIWithTools = callOpenAIWithTools;
