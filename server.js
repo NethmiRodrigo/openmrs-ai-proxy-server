@@ -38,52 +38,64 @@ const PROVIDERS_WITH_TOOLS = {
   local: callLocal.callLocalWithTools,
 };
 
+const LLM_PROVIDER = process.env.LLM_PROVIDER;
+const LLM_MODEL    = process.env.LLM_MODEL;
+
+if (!LLM_PROVIDER || !LLM_MODEL) {
+  console.error('LLM_PROVIDER and LLM_MODEL must be set in .env');
+  process.exit(1);
+}
+
+const activeCallWithTools = PROVIDERS_WITH_TOOLS[LLM_PROVIDER];
+if (!activeCallWithTools) {
+  console.error(`Unknown or unconfigured LLM_PROVIDER: "${LLM_PROVIDER}". Available: ${Object.keys(PROVIDERS_WITH_TOOLS).join(', ')}`);
+  process.exit(1);
+}
+
+const activeTools =
+  LLM_PROVIDER === 'gemini'    ? toGeminiTools() :
+  LLM_PROVIDER === 'anthropic' ? CLINICAL_TOOLS  :
+  toOpenAITools();
+
 /**
  * POST /api/generate-visit-summary
  *
- * Body: { provider, model, visitUuid, patientUuid, openmrsBaseUrl }
+ * Body: { visitUuid, patientUuid }
  * Response: { summary }
  *
  * The LLM calls clinical tools on demand to fetch visit data from OpenMRS.
+ * Provider and model are configured via LLM_PROVIDER and LLM_MODEL env vars.
  * OpenMRS credentials are read from OPENMRS_USERNAME / OPENMRS_PASSWORD env vars.
  */
 app.post('/api/generate-visit-summary', async (req, res) => {
-  const { provider, model, visitUuid, patientUuid } = req.body ?? {};
+  const { visitUuid, patientUuid } = req.body ?? {};
 
-  const missingFields = ['provider', 'model', 'visitUuid', 'patientUuid'].filter(
+  const missingFields = ['visitUuid', 'patientUuid'].filter(
     (f) => !req.body?.[f],
   );
   if (missingFields.length) {
     return res.status(400).json({ error: `Missing required fields: ${missingFields.join(', ')}` });
   }
 
-  const callWithTools = PROVIDERS_WITH_TOOLS[provider];
-  if (!callWithTools) {
-    return res.status(400).json({ error: `Unknown provider: ${provider}` });
-  }
-
-  console.log(`[POST /api/generate-visit-summary] provider=${provider} model=${model} visit=${visitUuid}`);
+  console.log(`[POST /api/generate-visit-summary] provider=${LLM_PROVIDER} model=${LLM_MODEL} visit=${visitUuid}`);
   const start = Date.now();
 
   try {
     const executor = new ToolExecutor({ visitUuid, patientUuid });
     const systemPrompt = buildSystemPrompt();
 
-    // Select tool format based on provider
-    const tools = provider === 'gemini' ? toGeminiTools() : provider === 'anthropic' ? CLINICAL_TOOLS : toOpenAITools();
-
-    const { content: summary, usage } = await callWithTools(model, systemPrompt, tools, executor);
+    const { content: summary, usage } = await activeCallWithTools(LLM_MODEL, systemPrompt, activeTools, executor);
     const tokens =
       usage?.total != null
         ? `${usage.input} in / ${usage.output} out / ${usage.total} total tokens`
         : 'token usage unavailable';
     console.log(
-      `[POST /api/generate-visit-summary] ${provider}/${model} responded in ${Date.now() - start}ms — ${tokens}`,
+      `[POST /api/generate-visit-summary] ${LLM_PROVIDER}/${LLM_MODEL} responded in ${Date.now() - start}ms — ${tokens}`,
     );
     return res.json({ summary });
   } catch (err) {
     console.error(
-      `[POST /api/generate-visit-summary] ${provider}/${model} failed in ${Date.now() - start}ms: ${err.message}`,
+      `[POST /api/generate-visit-summary] ${LLM_PROVIDER}/${LLM_MODEL} failed in ${Date.now() - start}ms: ${err.message}`,
     );
     return res.status(502).json({ error: err.message });
   }
@@ -91,57 +103,36 @@ app.post('/api/generate-visit-summary', async (req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-async function checkProviders() {
-  const checks = [];
-
-  if (process.env.OPENAI_API_KEY) {
-    checks.push(
-      fetch('https://api.openai.com/v1/models', {
-        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-      })
-        .then((r) => console.log('[openai]    ', r.ok ? 'ready' : `error (${r.status})`))
-        .catch((e) => console.log('[openai]     unreachable:', e.message)),
-    );
-  } else {
-    console.log('[openai]     no API key set');
-  }
-
-  if (process.env.ANTHROPIC_API_KEY) {
-    checks.push(
-      fetch('https://api.anthropic.com/v1/models', {
-        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      })
-        .then((r) => console.log('[anthropic] ', r.ok ? 'ready' : `error (${r.status})`))
-        .catch((e) => console.log('[anthropic]  unreachable:', e.message)),
-    );
-  } else {
-    console.log('[anthropic]  no API key set');
-  }
-
-  if (process.env.GEMINI_API_KEY) {
-    checks.push(
-      fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`)
-        .then((r) => console.log('[gemini]    ', r.ok ? 'ready' : `error (${r.status})`))
-        .catch((e) => console.log('[gemini]     unreachable:', e.message)),
-    );
-  } else {
-    console.log('[gemini]     no API key set');
-  }
-
-  const localBase = (process.env.LOCAL_MODEL_BASE_URL || 'http://localhost:11434/v1').replace(/\/$/, '');
-  checks.push(
-    fetch(`${localBase}/models`, {
+async function checkActiveProvider() {
+  if (LLM_PROVIDER === 'openai') {
+    await fetch('https://api.openai.com/v1/models', {
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    })
+      .then((r) => console.log('[openai]    ', r.ok ? 'ready' : `error (${r.status})`))
+      .catch((e) => console.log('[openai]     unreachable:', e.message));
+  } else if (LLM_PROVIDER === 'anthropic') {
+    await fetch('https://api.anthropic.com/v1/models', {
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    })
+      .then((r) => console.log('[anthropic] ', r.ok ? 'ready' : `error (${r.status})`))
+      .catch((e) => console.log('[anthropic]  unreachable:', e.message));
+  } else if (LLM_PROVIDER === 'gemini') {
+    await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`)
+      .then((r) => console.log('[gemini]    ', r.ok ? 'ready' : `error (${r.status})`))
+      .catch((e) => console.log('[gemini]     unreachable:', e.message));
+  } else if (LLM_PROVIDER === 'local') {
+    const localBase = (process.env.LOCAL_MODEL_BASE_URL || 'http://localhost:11434/v1').replace(/\/$/, '');
+    await fetch(`${localBase}/models`, {
       headers: { Authorization: `Bearer ${process.env.LOCAL_MODEL_API_KEY || 'local'}` },
     })
       .then((r) => console.log('[local]     ', r.ok ? `ready (${localBase})` : `error (${r.status}) — ${localBase}`))
-      .catch((e) => console.log(`[local]      unreachable (${localBase}):`, e.message)),
-  );
-
-  await Promise.all(checks);
+      .catch((e) => console.log(`[local]      unreachable (${localBase}):`, e.message));
+  }
 }
 
 app.listen(PORT, () => {
   console.log(`openmrs-ai-proxy-server listening on http://localhost:${PORT}`);
   console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
-  checkProviders();
+  console.log(`Active LLM: ${LLM_PROVIDER} / ${LLM_MODEL}`);
+  checkActiveProvider();
 });

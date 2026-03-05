@@ -19,7 +19,14 @@ There are no tests configured. There is no lint script.
 
 ## Environment Setup
 
-Copy `.env.example` to `.env` and populate the relevant API key(s) and OpenMRS credentials (`OPENMRS_BASE_URL`, `OPENMRS_USERNAME`, `OPENMRS_PASSWORD`). Only the LLM key for the chosen provider needs to be set.
+Copy `.env.example` to `.env`. The required vars are:
+
+- `LLM_PROVIDER` — one of `openai`, `anthropic`, `gemini`, `local`
+- `LLM_MODEL` — model identifier (e.g. `claude-sonnet-4-6`)
+- The API key matching the chosen provider (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `LOCAL_MODEL_BASE_URL`)
+- `OPENMRS_BASE_URL`, `OPENMRS_USERNAME`, `OPENMRS_PASSWORD`
+
+The server exits at startup with a clear error if `LLM_PROVIDER` or `LLM_MODEL` is missing or the provider is not recognised.
 
 ## Architecture
 
@@ -46,10 +53,10 @@ prompt-template.js             ← buildSystemPrompt helper
 
 **Single endpoint:** `POST /api/generate-visit-summary`
 
-- Request body: `{ provider: 'openai' | 'anthropic' | 'gemini' | 'local', model: string, visitUuid: string, patientUuid: string }`
+- Request body: `{ visitUuid: string, patientUuid: string }`
 - Response: `{ summary: string }`
+- Provider and model come from `LLM_PROVIDER` / `LLM_MODEL` env vars, resolved once at startup
 - `visitUuid` and `patientUuid` are baked into the `ToolExecutor` context; the LLM calls tools to fetch data on demand
-- The `provider` field is looked up in the `PROVIDERS_WITH_TOOLS` map in `server.js`
 
 **Adding a new provider:** create `providers/<name>.js` exporting an async `callWithTools(model, systemPrompt, tools, executor)` function, then add it to the `PROVIDERS_WITH_TOOLS` map in `server.js`.
 
