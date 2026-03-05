@@ -2,6 +2,8 @@
 
 A lightweight Express proxy that sits between an OpenMRS frontend and LLM provider APIs.
 
+The companion frontend module is [`esm-patient-ai-summary-app`](https://github.com/NethmiRodrigo/openmrs-esm-patient-chart/tree/main/packages/esm-patient-ai-summary-app), an OpenMRS frontend extension that renders the generated summary inside the patient chart.
+
 ## Architecture
 
 ```
