@@ -46,6 +46,18 @@ OpenMRS Frontend
 - **Single active provider.** `LLM_PROVIDER` and `LLM_MODEL` are set once in the environment. The frontend sends only `visitUuid` and `patientUuid`.
 - **Tool-calling loop.** The LLM is given a fixed set of parameterless clinical tools. It calls whichever ones it needs, the proxy fetches the data from OpenMRS, and the loop continues until the LLM produces a final summary.
 - **No pre-built payload.** Clinical data is fetched lazily on demand — only the data the LLM asks for is fetched.
+- **Saved visit and patient context.** All clinical tools are declared with no parameters — the LLM calls them like `get_vitals()` with no arguments and has no way to specify a different visit or patient.
+
+When a request arrives, the server captures `visitUuid` and `patientUuid` in a `ToolExecutor` instance:
+
+```js
+// server.js
+const executor = new ToolExecutor({ visitUuid, patientUuid });
+```
+
+`ToolExecutor` passes them down to `VisitDataFetcher`, which stores them and uses them in every OpenMRS API call it makes. When the LLM returns a tool call, the provider passes only the tool name to `executor.execute('get_vitals')` — the executor already knows which visit and patient to fetch for.
+
+The LLM can only decide _which_ tools to call. It never sees or influences the UUIDs.
 
 ## Supported providers
 
